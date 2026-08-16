@@ -1,0 +1,10 @@
+pyexasol
+python-dotenv
+langgraph
+langchain
+langchain-openai
+langchain-anthropic
+mcp
+pandas
+plotly
+streamlit
