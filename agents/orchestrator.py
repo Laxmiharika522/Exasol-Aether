@@ -14,18 +14,65 @@ class Orchestrator:
         self.governance_agent = GovernanceAgent()
         self.storyteller_agent = StorytellerAgent()
 
-    def answer(self, question: str) -> str:
+    def answer(self, question: str) -> dict:
         """
-        High-level flow (to be improved later):
-        1. Understand the question
-        2. Discover relevant schema
-        3. Generate SQL
-        4. Governance check
-        5. Execute
-        6. Create summary
+        Full multi-agent pipeline.
+        Returns a structured response.
         """
-        # Placeholder for now
-        return f"Orchestrator received question: {question}\n(Full multi-agent flow coming next)"
+        print(f"\n[Orchestrator] Received question: {question}")
+
+        # Step 1: Schema discovery (basic for now)
+        print("[Orchestrator] Calling Schema Agent...")
+        schemas = self.schema_agent.list_schemas()
+        tables = self.schema_agent.list_tables("TPCH")
+        schema_context = f"Available schemas: {schemas}\nTPCH tables: {tables}"
+
+        # Step 2: Generate SQL
+        print("[Orchestrator] Calling SQL Agent...")
+        sql = self.sql_agent.generate_sql(question, schema_context)
+        print(f"[Orchestrator] Generated SQL:\n{sql}")
+
+        # Step 3: Governance check
+        print("[Orchestrator] Calling Governance Agent...")
+        review = self.governance_agent.review_query(sql)
+        
+        if not review["approved"]:
+            print(f"[Orchestrator] Query BLOCKED: {review['reason']}")
+            return {
+                "success": False,
+                "question": question,
+                "error": review["reason"],
+                "sql": sql
+            }
+
+        print("[Orchestrator] Query APPROVED by Governance")
+
+        # Step 4: Execute query
+        print("[Orchestrator] Executing query on Exasol...")
+        result = self.sql_agent.execute_query(sql)
+
+        if not result["success"]:
+            return {
+                "success": False,
+                "question": question,
+                "error": result.get("error"),
+                "sql": sql
+            }
+
+        # Step 5: Generate summary
+        print("[Orchestrator] Calling Storyteller Agent...")
+        summary = self.storyteller_agent.generate_summary(question, result)
+
+        print("[Orchestrator] Done.\n")
+
+        return {
+            "success": True,
+            "question": question,
+            "sql": sql,
+            "row_count": result["row_count"],
+            "data": result["data"],
+            "summary": summary
+        }
 
     def close(self):
         self.schema_agent.close()
