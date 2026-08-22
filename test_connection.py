@@ -4,26 +4,29 @@ import os
 
 load_dotenv()
 
+dsn = os.getenv("EXA_DSN")
+user = os.getenv("EXA_USER")
+password = os.getenv("EXA_PASSWORD")
+
+print(f"Connecting to: {dsn} as {user}")
+
 conn = pyexasol.connect(
-    dsn="127.0.0.1:8563",
-    user="sys",
-    password="t2r5wQ4HjkibyIrL85zwnEJJ",
+    dsn=dsn,
+    user=user,
+    password=password,
     encryption=True,
-    websocket_sslopt={"cert_reqs": 0}  # needed for self-signed certificate
+    websocket_sslopt={"cert_reqs": 0}
 )
 
-print("✅ Connected to Exasol successfully!\n")
+print("SUCCESS: Connected to Exasol successfully!\n")
 
-# Test query - show a few customers
-result = conn.execute("""
-    SELECT C_CUSTKEY, C_NAME, C_NATIONKEY, C_ACCTBAL
-    FROM TPCH.CUSTOMER
-    LIMIT 5
-""").fetchall()
+# Test basic query first
+result = conn.execute("SELECT 1").fetchone()
+print(f"Basic test: {result}")
 
-print("Sample customers from TPCH.CUSTOMER:")
-for row in result:
-    print(row)
+# Check what schemas exist
+schemas = conn.execute("SELECT SCHEMA_NAME FROM EXA_SCHEMAS ORDER BY 1").fetchall()
+print(f"\nAvailable schemas: {[r[0] for r in schemas]}")
 
 conn.close()
 print("\nConnection closed.")

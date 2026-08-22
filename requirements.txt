@@ -7,4 +7,6 @@ langchain-anthropic
 mcp
 pandas
 plotly
-streamlit
+fastapi
+uvicorn
+python-multipart

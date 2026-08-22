@@ -14,7 +14,7 @@ class Orchestrator:
         self.governance_agent = GovernanceAgent()
         self.storyteller_agent = StorytellerAgent()
 
-    def answer(self, question: str) -> dict:
+    def answer(self, question: str, chat_history: list = None) -> dict:
         """
         Full multi-agent pipeline.
         Returns a structured response.
@@ -29,12 +29,12 @@ class Orchestrator:
 
         # Step 2: Generate SQL
         print("[Orchestrator] Calling SQL Agent...")
-        sql = self.sql_agent.generate_sql(question, schema_context)
+        sql = self.sql_agent.generate_sql(question, schema_context, chat_history)
         print(f"[Orchestrator] Generated SQL:\n{sql}")
 
         # Step 3: Governance check
         print("[Orchestrator] Calling Governance Agent...")
-        review = self.governance_agent.review_query(sql)
+        review = self.governance_agent.review_query(sql, question)
         
         if not review["approved"]:
             print(f"[Orchestrator] Query BLOCKED: {review['reason']}")
@@ -59,9 +59,9 @@ class Orchestrator:
                 "sql": sql
             }
 
-        # Step 5: Generate summary
+        # Step 5: Generate summary and chart metadata
         print("[Orchestrator] Calling Storyteller Agent...")
-        summary = self.storyteller_agent.generate_summary(question, result)
+        story_result = self.storyteller_agent.generate_summary(question, result)
 
         print("[Orchestrator] Done.\n")
 
@@ -71,7 +71,9 @@ class Orchestrator:
             "sql": sql,
             "row_count": result["row_count"],
             "data": result["data"],
-            "summary": summary
+            "columns": result.get("columns", []),
+            "summary": story_result.get("summary", "Done."),
+            "chart_config": story_result.get("chart", None)
         }
 
     def close(self):
