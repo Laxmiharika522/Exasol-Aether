@@ -20,9 +20,9 @@ class GovernanceAgent:
             "password", "credit", "card", "address"
         ]
 
-    def review_query(self, sql: str) -> dict:
+    def review_query(self, sql: str, prompt: str = "") -> dict:
         """
-        Review a SQL query and decide if it is safe.
+        Review a SQL query and the user prompt and decide if it is safe.
         
         Returns:
             {
@@ -39,10 +39,11 @@ class GovernanceAgent:
             }
 
         sql_upper = sql.upper()
+        prompt_upper = prompt.upper()
 
-        # 1. Block any write / dangerous operations
+        # 1. Block any write / dangerous operations in both the SQL and the Prompt
         for keyword in self.forbidden_keywords:
-            if re.search(rf"\b{keyword}\b", sql_upper):
+            if re.search(rf"\b{keyword}\b", sql_upper) or re.search(rf"\b{keyword}\b", prompt_upper):
                 return {
                     "approved": False,
                     "reason": f"Forbidden operation detected: {keyword}",

@@ -13,13 +13,13 @@ A multi-agent system that allows non-technical stakeholders (managers, CFOs, ope
 - [x] Python connection to Exasol working (`pyexasol`)
 - [x] MCP Server installed and validated
 - [x] Project structure created
-- [x] Schema Agent implemented and tested
-- [ ] SQL Agent
-- [ ] Governance Agent
-- [ ] Storyteller Agent
-- [ ] Orchestrator
-- [ ] Frontend (Streamlit)
-- [ ] AWS deployment (later)
+- [x] **Schema Agent** implemented (discovers tables/columns)
+- [x] **SQL Agent** implemented (natural language to SQL, conversational memory)
+- [x] **Governance Agent** implemented (enforces read-only, security checks)
+- [x] **Storyteller Agent** implemented (dynamic JSON charting, executive insights)
+- [x] **Orchestrator** implemented (routes multi-agent pipeline)
+- [x] **Frontend (Streamlit)** implemented (Enterprise UI, Chat UI, Groq Whisper STT)
+- [ ] AWS deployment (pending)
 
 ---
 
@@ -29,14 +29,15 @@ A multi-agent system that allows non-technical stakeholders (managers, CFOs, ope
 Aether/
 ├── agents/
 │   ├── schema_agent.py          ✅ Done
-│   ├── sql_agent.py
-│   ├── governance_agent.py
-│   ├── storyteller_agent.py
-│   └── orchestrator.py
+│   ├── sql_agent.py             ✅ Done (Conversational Memory)
+│   ├── governance_agent.py      ✅ Done
+│   ├── storyteller_agent.py     ✅ Done (Dynamic JSON Charts)
+│   └── orchestrator.py          ✅ Done
 ├── core/
 ├── utils/
 │   └── db.py                    ✅ Done
 ├── frontend/
+│   └── app.py                   ✅ Done (Voice STT + Enterprise UI)
 ├── docs/
 ├── tests/
 ├── scripts/
@@ -54,6 +55,7 @@ Aether/
 - Docker Desktop running
 - Exasol Starter Kit installed and running (`exakit status` should show "running")
 - Python 3.10+
+- **Groq API Key** (for SQL Agent LLM and Whisper STT)
 
 ---
 
@@ -61,26 +63,22 @@ Aether/
 
 1. Clone / open the project folder
 2. Create and activate virtual environment:
-   ```powershell
+   ```bash
    python -m venv venv
    .\venv\Scripts\Activate
    ```
 3. Install dependencies:
-   ```powershell
+   ```bash
    pip install -r requirements.txt
    ```
 4. Create `.env` file from the example:
-   ```powershell
+   ```bash
    copy .env.example .env
    ```
-   Then fill in the real passwords.
-5. Test the connection:
-   ```powershell
-   python test_connection.py
-   ```
-6. Test the Schema Agent:
-   ```powershell
-   python test_schema_agent.py
+   *Fill in your Exasol credentials and `GROQ_API_KEY`.*
+5. Run the Enterprise Application:
+   ```bash
+   streamlit run frontend/app.py
    ```
 
 ---
@@ -89,37 +87,34 @@ Aether/
 
 Main tables we will use:
 
-- `TPCH.CUSTOMER`
-- `TPCH.ORDERS`
-- `TPCH.LINEITEM`
-- `TPCH.PART`
-- `TPCH.SUPPLIER`
-- `TPCH.NATION`
-- `TPCH.REGION`
-- `TPCH.PARTSUPP`
+- TPCH.CUSTOMER
+- TPCH.ORDERS
+- TPCH.LINEITEM
+- TPCH.PART
+- TPCH.SUPPLIER
+- TPCH.NATION
+- TPCH.REGION
+- TPCH.PARTSUPP
 
 ---
 
 ## Team Division (Suggested)
 
-| Role                    | Responsibility                              | Status     |
-|-------------------------|---------------------------------------------|------------|
-| Schema Agent            | Discover schemas, tables, columns           | ✅ Done    |
-| SQL Agent               | Generate and execute SQL queries            | Pending    |
-| Governance Agent        | Safety checks, PII redaction, read-only     | Pending    |
-| Storyteller Agent       | Analyze results + create summary + charts   | Pending    |
-| Orchestrator            | Plan and coordinate all agents              | Pending    |
-| Frontend                | Streamlit chat interface                    | Pending    |
+| Role | Responsibility | Status |
+| --- | --- | --- |
+| Schema Agent | Discover schemas, tables, columns | ✅ Done |
+| SQL Agent | Generate and execute SQL queries (with conversational memory) | ✅ Done |
+| Governance Agent | Safety checks, PII redaction, read-only | ✅ Done |
+| Storyteller Agent | Analyze results + output Dynamic Chart JSON spec | ✅ Done |
+| Orchestrator | Plan and coordinate all agents, manage chat history | ✅ Done |
+| Frontend | Enterprise Chat Interface, Whisper Voice STT, Dynamic Plotly | ✅ Done |
 
 ---
 
 ## Next Steps
 
-1. Implement remaining agents
-2. Connect agents using LangGraph
-3. Build a simple Streamlit UI
-4. Prepare strong demo questions on TPCH data
-5. Move the system to AWS before final submission
+- Move the system to AWS before final submission (Dockerize the frontend)
+- Prepare a video recording demonstrating Voice Queries and Memory
 
 ---
 
