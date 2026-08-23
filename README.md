@@ -5,7 +5,6 @@
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Groq LPU](https://img.shields.io/badge/LLM%20Engine-Groq%20LPU%20Inference-F55036.svg?style=for-the-badge)](https://groq.com/)
 [![Plotly.js](https://img.shields.io/badge/Visualization-Plotly.js%20Dynamic-3F4F75.svg?style=for-the-badge&logo=plotly&logoColor=white)](https://plotly.com/javascript/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 > **Exasol AI Build Challenge 2026 | Autonomous Agents Track**  
 > **Aether** is an enterprise-grade, conversational multi-agent analytics copilot that bridges the gap between executive business intent and high-performance in-memory database execution. By coupling specialized autonomous AI agents with **Exasol's in-memory columnar database engine**, Aether transforms plain English or voice requests into optimized Exasol SQL queries, validates them through a Zero-Trust security firewall, executes against multi-million row datasets in milliseconds, and delivers interactive visual storytelling with automated executive summaries.
@@ -719,12 +718,6 @@ Thanks to the combination of **Exasol In-Memory Columnar Processing** and **Groq
 | **Innovation & Business Impact** | Replaces complex SQL writing with conversational voice and natural language, automated executive insights, and 1-click PDF reports. |
 | **Safety & Enterprise Governance** | Zero-trust SQL firewall inspecting AST syntax to prevent accidental or malicious data mutations. |
 | **Execution Polish & UI/UX** | Responsive glassmorphic UI, dynamic Plotly chart switcher, performance latency badges, and full conversational memory. |
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ---
 
