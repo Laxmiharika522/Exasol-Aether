@@ -20,7 +20,7 @@ Experience **Aether** in action — from voice queries and autonomous multi-agen
 
 <p align="center">
   <a href="https://drive.google.com/file/d/17FaH4dDNFtHPorkBCqXvs23pTLfCK1U5/view?usp=sharing">
-    <img src="Images/Analysis_Example1.png" alt="Aether Live Demo & Presentation Walkthrough" width="90%" style="border-radius: 12px; box-shadow: 0px 8px 24px rgba(0,0,0,0.3);">
+    <img src="Images/OverView_DarkTheme.png" alt="Aether Live Demo & Presentation Walkthrough" width="90%" style="border-radius: 12px; box-shadow: 0px 8px 24px rgba(0,0,0,0.3);">
   </a>
   <br>
   <b><a href="https://drive.google.com/file/d/17FaH4dDNFtHPorkBCqXvs23pTLfCK1U5/view?usp=sharing">🔗 Click here to watch the full Live Presentation & Video Walkthrough</a></b>
@@ -43,7 +43,7 @@ Experience **Aether** in action — from voice queries and autonomous multi-agen
   - [4. Executive Storyteller Agent](#4--executive-storyteller-agent-storytelleragent)
   - [5. Central Orchestrator](#5--central-orchestrator-orchestrator)
 - [Key Features & Capabilities](#-key-features--capabilities)
-- [Exasol Database Schema (TPC-H Benchmark)](#-exasol-database-schema-tpc-h-benchmark)
+- [Dataset & Exasol Database Schema (TPC-H Benchmark)](#-dataset--exasol-database-schema-tpc-h-benchmark)
 - [Project Directory Structure](#-project-directory-structure)
 - [Step-by-Step Installation & Setup](#-step-by-step-installation--setup)
 - [API Reference](#-api-reference)
@@ -110,34 +110,6 @@ Aether acts as an autonomous data team in a box:
 |:---:|:---:|
 | <img src="Images/SavedInsights_Example1.png" alt="Saved Insight Breakdown" width="100%"> | <img src="Images/Saved_Insights_Example1_graph.png" alt="Saved Insight Graph" width="100%"> |
 | *Executive brief and telemetry cards archived for future review* | *Archived high-resolution visualization rendered on demand* |
-
----
-
-### 4. 🤖 Autonomous AI Agent Swarm Live Inspectors
-
-#### 🔍 1. Schema Discovery Agent
-| Live Catalog Inspector | Sample Schema Exploration Questions |
-|:---:|:---:|
-| <img src="Images/Schema_Discovery_Agent.png" alt="Schema Discovery Agent" width="100%"> | <img src="Images/Schema_Discovery_Agent_Sample_Questions.png" alt="Schema Discovery Sample Questions" width="100%"> |
-| *Real-time Exasol catalog introspection (8 tables, 61 columns mapped)* | *Interactive prompt chips for inspecting schemas, tables, and column data types* |
-
-#### ⚡ 2. Natural Language SQL Agent
-| Dynamic SQL Generation Engine | SQL Generation Test Prompts |
-|:---:|:---:|
-| <img src="Images/SQL_Agent.png" alt="SQL Agent" width="100%"> | <img src="Images/SQL_Agent_Sample_Questions.png" alt="SQL Agent Sample Questions" width="100%"> |
-| *Natural language translation engine optimized for Exasol dialect constraints* | *Complex multi-table join and aggregation test prompts* |
-
-#### 🛡️ 3. Zero-Trust Governance Firewall Agent
-| Dual-Layer Security Firewall | Governance Audit & Security Test Queries |
-|:---:|:---:|
-| <img src="Images/Governance_Agent.png" alt="Governance Agent" width="100%"> | <img src="Images/Governance_Agent_samplequestions.png" alt="Governance Agent Sample Questions" width="100%"> |
-| *Dual-layer security gatekeeper blocking destructive mutations (DROP, DELETE, UPDATE)* | *Pre-configured injection and write-operation safety validation tests* |
-
-#### 📊 4. Executive Storyteller Agent
-| Executive Insights & Chart Inference | Storyteller Sample Narratives & KPIs |
-|:---:|:---:|
-| <img src="Images/StoryTeller_Agent.png" alt="Storyteller Agent" width="100%"> | <img src="Images/Story_Teller_Agent_sample_questions.png" alt="Storyteller Agent Sample Questions" width="100%"> |
-| *Executive-level summary synthesis and statistical chart axis inference* | *Strategic business questions testing narrative summaries and visual storytelling* |
 
 ---
 
@@ -223,29 +195,29 @@ flowchart TB
     class PlotlyEngine,DataTable,ExecStory,ExportHub output;
 
     %% Data Flow Connections
-    User -->|Text Prompt| WebUI
-    User -->|Voice Command| VoiceMic
-    VoiceMic -->|Audio Payload (WAV/WebM)| VoiceTranscribe
-    VoiceTranscribe -->|Transcribed Prompt| WebUI
-    WebUI -->|POST /api/chat {prompt, history}| Server
+    User -->|"Text Prompt"| WebUI
+    User -->|"Voice Command"| VoiceMic
+    VoiceMic -->|"Audio Payload (WAV/WebM)"| VoiceTranscribe
+    VoiceTranscribe -->|"Transcribed Prompt"| WebUI
+    WebUI -->|"POST /api/chat (prompt, history)"| Server
     Server --> Orch
 
-    Orch -->|1. Introspect Schema| SchemaAg
-    SchemaAg -.->|Query Metadata| ExasolDB
-    SchemaAg -->|Schema Context & Types| SQLAg
+    Orch -->|"1. Introspect Schema"| SchemaAg
+    SchemaAg -.->|"Query Metadata"| ExasolDB
+    SchemaAg -->|"Schema Context & Types"| SQLAg
 
-    Orch -->|2. Synthesize SQL| SQLAg
-    SQLAg -->|Dialect-Precise SQL| GovAg
+    Orch -->|"2. Synthesize SQL"| SQLAg
+    SQLAg -->|"Dialect-Precise SQL"| GovAg
 
-    Orch -->|3. Policy Inspection| GovAg
-    GovAg -->|Approved Read-Only Query| ExasolDB
+    Orch -->|"3. Policy Inspection"| GovAg
+    GovAg -->|"Approved Read-Only Query"| ExasolDB
 
-    ExasolDB -->|4. Raw Columnar Results & Timings| Orch
-    Orch -->|5. Raw Records + Query Context| StoryAg
+    ExasolDB -->|"4. Raw Columnar Results & Timings"| Orch
+    Orch -->|"5. Raw Records + Query Context"| StoryAg
 
-    StoryAg -->|Executive Story + Chart Config| Orch
-    Orch -->|Unified JSON Response Payload| Server
-    Server -->|Render Response| WebUI
+    StoryAg -->|"Executive Story + Chart Config"| Orch
+    Orch -->|"Unified JSON Response Payload"| Server
+    Server -->|"Render Response"| WebUI
 
     WebUI --> PlotlyEngine
     WebUI --> DataTable
@@ -419,9 +391,29 @@ sequenceDiagram
 
 ---
 
-## 📊 Exasol Database Schema (TPC-H Benchmark)
+## 📊 Dataset & Exasol Database Schema (TPC-H Benchmark)
 
-Aether is deployed and validated against the standardized enterprise **TPC-H** decision support benchmark schema inside Exasol:
+### 📌 Dataset Description
+Aether is built and evaluated against the industry-standard **TPC-H (Transaction Processing Performance Council - Benchmark H)** decision support dataset, hosted directly within the **Exasol In-Memory Columnar Database** under the `TPCH` schema.
+
+* **Dataset Name**: TPC-H Benchmark Dataset
+* **Domain**: Global Enterprise Wholesale, Supply Chain Logistics, Regional Fulfillment, Customer Purchasing & Financial Analysis
+* **Database Engine**: Exasol In-Memory Columnar Database Cluster
+* **Schema**: `TPCH` (8 Relational Tables, 61 Columns)
+* **Metadata Catalogs**: Live Exasol system introspection via `EXA_SCHEMAS`, `EXA_ALL_TABLES`, and `EXA_ALL_COLUMNS`
+
+| Table Name | Primary Key | Description | Key Attributes |
+|---|---|---|---|
+| `TPCH.REGION` | `R_REGIONKEY` | Global geographic macro-regions | `R_REGIONKEY`, `R_NAME`, `R_COMMENT` |
+| `TPCH.NATION` | `N_NATIONKEY` | Sovereign nations mapped to regions | `N_NATIONKEY`, `N_NAME`, `N_REGIONKEY` |
+| `TPCH.CUSTOMER` | `C_CUSTKEY` | Enterprise client accounts & segments | `C_CUSTKEY`, `C_NAME`, `C_MKTSEGMENT`, `C_ACCTBAL`, `C_NATIONKEY` |
+| `TPCH.ORDERS` | `O_ORDERKEY` | Commercial order transactions | `O_ORDERKEY`, `O_CUSTKEY`, `O_TOTALPRICE`, `O_ORDERDATE`, `O_ORDERSTATUS` |
+| `TPCH.LINEITEM` | `(L_ORDERKEY, L_LINENUMBER)` | Granular line-item fulfillment | `L_EXTENDEDPRICE`, `L_DISCOUNT`, `L_TAX`, `L_QUANTITY`, `L_SHIPDATE`, `L_SHIPMODE` |
+| `TPCH.SUPPLIER` | `S_SUPPKEY` | Part suppliers and vendors | `S_SUPPKEY`, `S_NAME`, `S_ADDRESS`, `S_NATIONKEY`, `S_ACCTBAL` |
+| `TPCH.PARTSUPP` | `(PS_PARTKEY, PS_SUPPKEY)` | Supplier inventory and cost metrics | `PS_PARTKEY`, `PS_SUPPKEY`, `PS_AVAILQTY`, `PS_SUPPLYCOST` |
+| `TPCH.PART` | `P_PARTKEY` | Parts product master catalog | `P_PARTKEY`, `P_NAME`, `P_MFGR`, `P_BRAND`, `P_TYPE`, `P_RETAILPRICE` |
+
+### 🗺️ Relational Schema Diagram
 
 ```
                   +-------------------+

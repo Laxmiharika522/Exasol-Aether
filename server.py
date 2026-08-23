@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, UploadFile, File, Body
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 import requests
 from dotenv import load_dotenv
 
@@ -18,8 +18,12 @@ orch = Orchestrator()
 # Ensure static folder exists
 os.makedirs("frontend/static", exist_ok=True)
 
-# Mount the static files (HTML, CSS, JS) at the root
+# Mount the static files (HTML, CSS, JS)
 app.mount("/app", StaticFiles(directory="frontend/static", html=True), name="static")
+
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/app/")
 
 @app.post("/api/chat")
 async def chat(payload: dict = Body(...)):
