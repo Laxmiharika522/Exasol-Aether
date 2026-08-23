@@ -2,6 +2,10 @@
 # Environment & Secrets (CRITICAL)
 # ==========================================
 .env
+.env.local
+.env.*
+*.env
+.env
 .env.*
 *.env
 !.env.example
@@ -89,4 +93,5 @@ dummy.wav
 .Trashes
 ehthumbs.db
 Thumbs.db
-desktop.ini
+desktop.ini__pycache__/ 
+*.pyc 
