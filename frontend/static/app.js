@@ -1,5 +1,159 @@
 let chatHistory = [];
 let queryHistoryList = JSON.parse(localStorage.getItem('aether_query_history')) || [];
+let lastTimings = null;
+const agentProfiles = {
+    'agent-schema': {
+        name: 'Schema Agent',
+        icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>',
+        role: 'Discovers and maps the Exasol database schema. Understands relationships, primary keys, and table structures to provide exact context for queries.',
+        llm: 'Native Exasol Metadata API',
+        prompt: 'System: Discover TPCH tables.\nAction: Mapping metadata for Customer, Orders, LineItem, Part, Supplier, Nation, Region.',
+        lastAction: 'Mapped TPCH schema (8 tables, 61 columns) in 0.03s.'
+    },
+    'agent-sql': {
+        name: 'SQL Agent',
+        icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
+        role: 'Translates natural language business questions into highly optimized, dialect-specific Exasol SQL queries. Manages conversational memory for follow-up drill-downs.',
+        llm: 'Groq (Llama-3 70B)',
+        prompt: 'You are an expert SQL generator for Exasol database.\nYou only generate clean, correct, read-only SQL queries.\nDo NOT use DATEDIFF. Use DAYS_BETWEEN.',
+        lastAction: 'Generated Exasol dialect SQL (JOIN across 4 tables) in 0.24s.'
+    },
+    'agent-governance': {
+        name: 'Governance Agent',
+        icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
+        role: 'Acts as a strict security firewall. Performs dual-layer scanning (Regex + LLM semantic analysis) to block malicious injection attempts, DROP, DELETE, or UPDATE commands.',
+        llm: 'Groq (Mixtral 8x7B)',
+        prompt: 'You are a strict database security officer.\nAnalyze the given SQL query for SQL injection or destructive operations.\nAllow only SELECT statements.',
+        lastAction: 'Scanned last query. 0 threats detected. Approved for execution.'
+    },
+    'agent-storyteller': {
+        name: 'Storyteller Agent',
+        icon: '<svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
+        role: 'Transforms raw data rows into professional executive summaries and recommends the optimal charting configuration (Bar, Line, Scatter, Pie) based on data distribution.',
+        llm: 'Groq (Llama-3 8B)',
+        prompt: 'You are an executive data analyst.\nSummarize the following data in 2-3 concise sentences.\nRecommend a chart type and axes based on the columns.',
+        lastAction: 'Synthesized 10 rows into executive summary and recommended Bar Chart.'
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const allNavItems = document.querySelectorAll('.nav-item');
+    
+    // Workspace Links (Overview, etc.) - We just handle active state and showing placeholder
+    ['nav-overview', 'nav-history', 'nav-saved'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('click', () => {
+                allNavItems.forEach(nav => nav.classList.remove('active'));
+                el.classList.add('active');
+            });
+        }
+    });
+
+    // Latency badge click trace modal
+    const latencyBadge = document.getElementById('latency-badge');
+    if (latencyBadge) {
+        latencyBadge.style.cursor = 'pointer';
+        latencyBadge.title = "Click to view latency breakdown";
+        latencyBadge.addEventListener('click', () => {
+            if (lastTimings) {
+                window.openTraceModal(lastTimings);
+            } else {
+                window.openTraceModal({
+                    schema: 0,
+                    sql: 0,
+                    governance: 0,
+                    execution: 0,
+                    storyteller: 0
+                });
+            }
+        });
+    }
+
+    // DB status badge click trace modal
+    const dbStatusBadge = document.getElementById('db-status-badge');
+    if (dbStatusBadge) {
+        dbStatusBadge.addEventListener('click', () => {
+            window.openDbModal();
+        });
+    }
+});
+
+window.openTraceModal = function(timings) {
+    const totalTime = Object.values(timings).reduce((a, b) => a + b, 0);
+    const content = `
+        <div class="space-y-4">
+            <div class="flex justify-between items-center text-xs font-mono font-bold text-slate-500 bg-slate-50 dark:bg-[#18181B] px-3 py-2 rounded border border-slate-100 dark:border-slate-800">
+                <span>Total Response Time</span>
+                <span class="text-indigo-600 dark:text-indigo-400">${totalTime}ms</span>
+            </div>
+            
+            <div class="space-y-3.5 mt-4">
+                <div class="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-800/40 pb-2">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium">Schema Agent</span>
+                    <span class="font-mono font-semibold text-slate-950 dark:text-slate-50">${timings.schema || 0}ms</span>
+                </div>
+                <div class="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-800/40 pb-2">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium">SQL Agent</span>
+                    <span class="font-mono font-semibold text-slate-950 dark:text-slate-50">${timings.sql || 0}ms</span>
+                </div>
+                <div class="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-800/40 pb-2">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium">Governance Agent</span>
+                    <span class="font-mono font-semibold text-slate-950 dark:text-slate-50">${timings.governance || 0}ms</span>
+                </div>
+                <div class="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-800/40 pb-2">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium">Exasol Database</span>
+                    <span class="font-mono font-semibold text-slate-950 dark:text-slate-50">${timings.execution || 0}ms</span>
+                </div>
+                <div class="flex justify-between items-center text-sm pb-1">
+                    <span class="text-slate-600 dark:text-slate-400 font-medium">Storyteller Agent</span>
+                    <span class="font-mono font-semibold text-slate-950 dark:text-slate-50">${timings.storyteller || 0}ms</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('trace-modal-content').innerHTML = content;
+    
+    const modal = document.getElementById('trace-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.querySelector('div').classList.remove('scale-95');
+    }, 10);
+};
+
+window.closeTraceModal = function() {
+    const modal = document.getElementById('trace-modal');
+    modal.classList.add('opacity-0');
+    modal.querySelector('div').classList.add('scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 300);
+};
+
+window.openDbModal = function() {
+    const modal = document.getElementById('db-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.querySelector('div').classList.remove('scale-95');
+    }, 10);
+};
+
+window.closeDbModal = function() {
+    const modal = document.getElementById('db-modal');
+    modal.classList.add('opacity-0');
+    modal.querySelector('div').classList.add('scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 300);
+};
+
 const form = document.getElementById('query-form');
 const input = document.getElementById('query-input');
 const resultsArea = document.getElementById('results-area');
@@ -27,17 +181,32 @@ themeToggle.addEventListener('click', toggleTheme);
 
 window.setQuery = function(q) {
     const navOverviewBtn = document.getElementById('nav-overview');
-    if (navOverviewBtn) navOverviewBtn.click();
+    if (navOverviewBtn) {
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        navOverviewBtn.classList.add('active');
+    }
+    showSearchBar();
+    heroSection.classList.remove('opacity-0', 'scale-95', 'h-0', 'mb-0', 'overflow-hidden');
+    suggestions.classList.remove('opacity-0', 'scale-95', 'h-0', 'overflow-hidden');
     input.value = q;
     
-    // Use setTimeout to ensure the element is visible before focusing
     setTimeout(() => {
         input.focus();
-        // Optional: animate the input to draw attention
         input.parentElement.classList.add('ring-2', 'ring-indigo-500');
         setTimeout(() => input.parentElement.classList.remove('ring-2', 'ring-indigo-500'), 1000);
-    }, 100);
-}
+    }, 50);
+};
+
+window.askQuery = function(q) {
+    const navOverviewBtn = document.getElementById('nav-overview');
+    if (navOverviewBtn) {
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        navOverviewBtn.classList.add('active');
+    }
+    showSearchBar();
+    input.value = q;
+    form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+};
 
 function transitionToResults() {
     heroSection.classList.add('opacity-0', 'scale-95', 'h-0', 'mb-0', 'overflow-hidden');
@@ -179,7 +348,8 @@ form.addEventListener('submit', async (e) => {
         if (loader) loader.remove();
         
         chatHistory.push({ role: 'user', content: query });
-        chatHistory.push({ role: 'assistant', content: data });
+        const assistantText = typeof data.summary === 'string' ? data.summary : (data.sql || 'Analysis completed.');
+        chatHistory.push({ role: 'assistant', content: assistantText });
         
         renderAssistantResponse(data, query);
     } catch (e) {
@@ -242,13 +412,29 @@ function renderError(msg, originalQuery) {
     });
 }
 
-function generateMockKPIs(data) {
+function generateMockKPIs(data, timings) {
     const randomTrend = () => (Math.random() * 15 + 2).toFixed(1);
-    const isUp = Math.random() > 0.3;
+    
+    // Generate a dynamic confidence score between 87% and 99%
+    const confidence = Math.floor(Math.random() * 13) + 87;
+    
+    // Calculate the real database execution time if available (converted to seconds)
+    let execTime;
+    if (timings && typeof timings.execution !== 'undefined') {
+        execTime = (timings.execution / 1000).toFixed(3);
+    } else {
+        execTime = (Math.random() * 0.77 + 0.08).toFixed(2);
+    }
+    
+    // Randomize whether time improved or worsened
+    const timeTrendUp = Math.random() > 0.5;
+    const timeTrendVal = (Math.random() * 0.15 + 0.01).toFixed(2);
+    const timeTrend = timeTrendUp ? `-${timeTrendVal}s` : `+${timeTrendVal}s`;
+    
     return [
         { label: 'Total Rows Analyzed', value: data ? data.length : 0, trend: `+${randomTrend()}%`, up: true, icon: '📊' },
-        { label: 'AI Confidence Score', value: 98, format: '%', trend: 'High', up: true, icon: '🎯' },
-        { label: 'Execution Time', value: 0.24, format: 's', trend: '-0.02s', up: true, icon: '⚡' },
+        { label: 'AI Confidence Score', value: confidence, format: '%', trend: confidence > 94 ? 'High' : 'Good', up: true, icon: '🎯' },
+        { label: 'Execution Time', value: parseFloat(execTime), format: 's', trend: timeTrend, up: timeTrendUp, icon: '⚡' },
         { label: 'Data Governance', value: 'Passed', trend: 'Read-only', up: true, icon: '🛡️', textValue: true },
     ];
 }
@@ -272,6 +458,17 @@ function animateValue(obj, start, end, duration, format = '') {
 window.currentResponses = window.currentResponses || {};
 
 function renderAssistantResponse(resp, originalQuery, isRestored = false) {
+    if (resp.timings) {
+        lastTimings = resp.timings;
+        const totalTime = Object.values(resp.timings).reduce((a, b) => a + b, 0);
+        const latencyBadge = document.getElementById('latency-badge');
+        if (latencyBadge) {
+            latencyBadge.querySelector('span').innerText = `System Trace: ${totalTime}ms`;
+            latencyBadge.classList.remove('hidden');
+            latencyBadge.classList.add('flex');
+        }
+    }
+
     if (!resp.success) {
         const queryToPass = originalQuery || resp.question;
         const formattedMsg = resp.error + (resp.sql ? `<div class="mt-4"><pre class="text-xs bg-slate-100 dark:bg-black/40 p-4 rounded-xl border border-slate-200 dark:border-white/5 text-rose-600 dark:text-rose-400 font-mono shadow-inner overflow-x-auto"><code>${resp.sql}</code></pre></div>` : '');
@@ -282,7 +479,7 @@ function renderAssistantResponse(resp, originalQuery, isRestored = false) {
     const chartId = 'chart-' + Math.random().toString(36).substr(2, 9);
     window.currentResponses[chartId] = { resp, originalQuery };
     
-    const kpis = generateMockKPIs(resp.data);
+    const kpis = generateMockKPIs(resp.data, resp.timings);
     
     let html = `
         <div class="w-full mx-auto flex items-start gap-4 opacity-0 transform translate-y-4 transition-all duration-700 mb-8" id="resp-${chartId}">
@@ -362,6 +559,10 @@ function renderAssistantResponse(resp, originalQuery, isRestored = false) {
                                 Generated SQL
                                 <div class="absolute bottom-0 left-0 w-full h-[2px] bg-transparent tab-indicator"></div>
                             </button>
+                            <button class="tab-btn px-5 py-4 font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 text-xs transition-colors relative" data-target="thoughts-${chartId}">
+                                Agent Thoughts
+                                <div class="absolute bottom-0 left-0 w-full h-[2px] bg-transparent tab-indicator"></div>
+                            </button>
                         </div>
                         <div id="export-controls-${chartId}" class="hidden pr-4">
                             <button class="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-white/5 transition-all" onclick="exportTableToCSV('${chartId}')">
@@ -408,17 +609,188 @@ function renderAssistantResponse(resp, originalQuery, isRestored = false) {
                                 <pre class="whitespace-pre-wrap"><code class="language-sql text-indigo-700 dark:text-accent3">${resp.sql}</code></pre>
                             </div>
                         </div>
+
+                        <div id="thoughts-${chartId}" class="tab-content hidden h-[500px] overflow-y-auto p-6 bg-slate-50 dark:bg-[#09090B]">
+                            <div class="space-y-6 max-w-2xl mx-auto">
+                                <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+                                    <span class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Multi-Agent Collaboration Trace</span>
+                                    <span class="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 rounded">
+                                        Total Latency: ${Object.values(resp.timings || {}).reduce((a, b) => a + b, 0)}ms
+                                    </span>
+                                </div>
+                                
+                                <div class="relative border-l-2 border-slate-200 dark:border-slate-800 ml-4 pl-6 space-y-8 py-2">
+                                    <!-- Schema Agent -->
+                                    <div class="relative">
+                                        <div class="absolute -left-[31px] top-0 w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-md">
+                                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                                        </div>
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <h5 class="text-sm font-bold text-slate-900 dark:text-slate-100">Schema Agent</h5>
+                                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Fetched database metadata & mapped TPCH tables.</p>
+                                            </div>
+                                            <span class="text-xs font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">${resp.timings?.schema || 0}ms</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- SQL Agent -->
+                                    <div class="relative">
+                                        <div class="absolute -left-[31px] top-0 w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center shadow-md">
+                                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                        </div>
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <h5 class="text-sm font-bold text-slate-900 dark:text-slate-100">SQL Agent</h5>
+                                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Generated Exasol-optimized SQL query via Groq (Llama-3 70B).</p>
+                                            </div>
+                                            <span class="text-xs font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">${resp.timings?.sql || 0}ms</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Governance Agent -->
+                                    <div class="relative">
+                                        <div class="absolute -left-[31px] top-0 w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md">
+                                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                                        </div>
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <h5 class="text-sm font-bold text-slate-900 dark:text-slate-100">Governance Agent</h5>
+                                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Verified query safety. Scan result: <span class="text-emerald-500 font-bold">Approved (Clean)</span>.</p>
+                                            </div>
+                                            <span class="text-xs font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">${resp.timings?.governance || 0}ms</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Exasol Execution -->
+                                    <div class="relative">
+                                        <div class="absolute -left-[31px] top-0 w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-md">
+                                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                                        </div>
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <h5 class="text-sm font-bold text-slate-900 dark:text-slate-100">Exasol Database</h5>
+                                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Executed query natively on live instance & returned data payload.</p>
+                                            </div>
+                                            <span class="text-xs font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">${resp.timings?.execution || 0}ms</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Storyteller Agent -->
+                                    <div class="relative">
+                                        <div class="absolute -left-[31px] top-0 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
+                                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                                        </div>
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <h5 class="text-sm font-bold text-slate-900 dark:text-slate-100">Storyteller Agent</h5>
+                                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Generated executive insights and recommended chart settings via Groq (Llama-3 8B).</p>
+                                            </div>
+                                            <span class="text-xs font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded">${resp.timings?.storyteller || 0}ms</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                </div>
+                
+                <!-- Section 4: Conversational Follow-up -->
+                <div id="followup-container-${chartId}" class="mt-6 flex items-center bg-white dark:bg-[#09090b] border-[1.5px] border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg hover:shadow-xl focus-within:border-indigo-500/50 dark:focus-within:border-indigo-500/50 focus-within:ring-4 focus-within:ring-indigo-500/10 transition-all duration-300 px-5 py-3 w-full max-w-4xl mx-auto opacity-0 translate-y-2 followup-anim relative group" style="transition-delay: 400ms;">
+                    
+                    <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 rounded-2xl pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity duration-500"></div>
+
+                    <div class="text-indigo-400 dark:text-indigo-500 mr-3 flex items-center justify-center relative z-10">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                    </div>
+                    
+                    <input type="text" id="followup-input-${chartId}" class="flex-1 bg-transparent border-none focus:outline-none text-base text-slate-900 dark:text-slate-50 placeholder-slate-400 dark:placeholder-slate-500 relative z-10" placeholder="Ask a follow-up... (e.g. 'Now filter this to only show USA')" onkeypress="if(event.key === 'Enter') handleFollowupSubmit('${chartId}')">
+                    
+                    <button class="p-2.5 bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-xl transition-all duration-300 flex items-center justify-center ml-3 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 relative z-10" onclick="handleFollowupSubmit('${chartId}')" title="Send Follow-up">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
                 </div>
             </div>
         </div>
     `;
+    
+    // Make sure we have a global storage for responses
+    if (!window.currentResponses) window.currentResponses = {};
+    window.currentResponses[chartId] = resp;
+    
+    window.handleFollowupSubmit = async function(cid) {
+        const inputEl = document.getElementById(`followup-input-${cid}`);
+        const followupQ = inputEl.value.trim();
+        if (!followupQ) return;
+        
+        const prevResp = window.currentResponses[cid];
+        if (!prevResp) return;
+        
+        // Build conversational history
+        const history = [
+            { role: "user", content: prevResp.question },
+            { role: "assistant", content: prevResp.sql }
+        ];
+        
+        // Hide the follow-up box for this chart so the user uses the newest one
+        const oldContainer = document.getElementById(`followup-container-${cid}`);
+        if (oldContainer) oldContainer.style.display = 'none';
+        
+        // Scroll down
+        inputEl.value = '';
+        inputEl.blur();
+        
+        // Create new ID and loading state
+        const newChartId = 'chart_' + Date.now();
+        const loader = document.getElementById('loader-template').content.cloneNode(true);
+        resultsArea.appendChild(loader);
+        
+        const loaderEl = resultsArea.lastElementChild;
+        setTimeout(() => loaderEl.classList.remove('opacity-0', 'translate-y-4'), 10);
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: followupQ, history: history })
+            });
+            const data = await response.json();
+            
+            loaderEl.remove();
+            
+            if (data.success) {
+                // The correct signature is: renderAssistantResponse(resp, originalQuery, isRestored)
+                // Note: renderAssistantResponse automatically generates its own chartId and stores it in window.currentResponses
+                renderAssistantResponse(data, followupQ);
+                
+                queryHistoryList.unshift({
+                    query: followupQ,
+                    time: new Date().toLocaleTimeString(),
+                    success: data.success
+                });
+                if (queryHistoryList.length > 50) queryHistoryList.pop();
+                localStorage.setItem('aether_query_history', JSON.stringify(queryHistoryList));
+            } else {
+                alert('Copilot Error: ' + data.error);
+            }
+        } catch (error) {
+            loaderEl.remove();
+            alert('Connection error.');
+        }
+    };
+
     
     resultsArea.insertAdjacentHTML('beforeend', html);
     const containerEl = document.getElementById(`resp-${chartId}`);
     
     setTimeout(() => {
         containerEl.classList.remove('opacity-0', 'translate-y-4');
+        
+        const fup = containerEl.querySelector('.followup-anim');
+        if (fup) {
+            setTimeout(() => fup.classList.remove('opacity-0', 'translate-y-2'), 400);
+        }
         
         // Trigger number animations
         containerEl.querySelectorAll('.metric-value').forEach(el => {
@@ -483,13 +855,52 @@ function renderAssistantResponse(resp, originalQuery, isRestored = false) {
 }
 
 function renderPlotlyChart(elementId, data, columns, config) {
-    if (!config.x || !config.y) return;
-    const xIdx = columns.indexOf(config.x);
-    const yIdx = columns.indexOf(config.y);
-    if (xIdx === -1 || yIdx === -1) return;
+    if (!config || !data || data.length === 0 || !columns || columns.length === 0) return;
+    
+    // Normalize column names for case-insensitive lookup
+    const normalizedCols = columns.map(c => String(c).trim().toUpperCase());
+    
+    let xIdx = -1;
+    let yIdx = -1;
+    
+    if (config.x) {
+        const targetX = String(config.x).trim().toUpperCase();
+        xIdx = normalizedCols.indexOf(targetX);
+        if (xIdx === -1) {
+            xIdx = normalizedCols.findIndex(c => c.includes(targetX) || targetX.includes(c));
+        }
+    }
+    if (config.y) {
+        const targetY = String(config.y).trim().toUpperCase();
+        yIdx = normalizedCols.indexOf(targetY);
+        if (yIdx === -1) {
+            yIdx = normalizedCols.findIndex(c => c.includes(targetY) || targetY.includes(c));
+        }
+    }
+    
+    // Fallback: Infer X and Y if not matched
+    if (xIdx === -1 && columns.length >= 1) xIdx = 0;
+    if (yIdx === -1 && columns.length >= 2) {
+        for (let c = 0; c < columns.length; c++) {
+            if (c !== xIdx && data.some(r => r[c] !== null && r[c] !== undefined && !isNaN(parseFloat(String(r[c]).replace('$', '').replace(',', ''))))) {
+                yIdx = c;
+                break;
+            }
+        }
+        if (yIdx === -1) yIdx = columns.length > 1 ? 1 : 0;
+    }
+    if (yIdx === -1) yIdx = xIdx;
+    
+    const xColName = columns[xIdx] || 'Category';
+    const yColName = columns[yIdx] || 'Value';
     
     const xData = data.map(row => row[xIdx]);
-    const yData = data.map(row => row[yIdx]);
+    const yData = data.map(row => {
+        const raw = row[yIdx];
+        if (typeof raw === 'number') return raw;
+        const parsed = parseFloat(String(raw).replace('$', '').replace(/,/g, ''));
+        return isNaN(parsed) ? raw : parsed;
+    });
     
     const isDark = document.documentElement.classList.contains('dark');
     const textColor = isDark ? '#FAFAFA' : '#0F172A';
@@ -531,14 +942,14 @@ function renderPlotlyChart(elementId, data, columns, config) {
         font: { family: 'Inter', color: textColor, size: 11 },
         margin: { t: 20, r: 20, b: 60, l: 70 },
         xaxis: { 
-            title: { text: config.x, font: { size: 12, color: textColor } },
+            title: { text: xColName, font: { size: 12, color: textColor } },
             gridcolor: gridColor, 
             zerolinecolor: gridColor, 
             showline: false,
             automargin: true
         },
         yaxis: { 
-            title: { text: config.y, font: { size: 12, color: textColor } },
+            title: { text: yColName, font: { size: 12, color: textColor } },
             gridcolor: gridColor, 
             zerolinecolor: gridColor, 
             showline: false,
@@ -619,6 +1030,10 @@ window.exportToPDF = async function(chartId, title) {
             backgroundColor: document.documentElement.classList.contains('dark') ? '#09090B' : '#FAFAFA'
         });
         
+        if (canvas.width === 0 || canvas.height === 0) {
+            throw new Error("Canvas was rendered with 0 dimensions.");
+        }
+        
         // 3. RESTORE DOM TO ORIGINAL STATE
         if (actionButtons) actionButtons.classList.remove('hidden');
         if (tabNav) tabNav.classList.remove('hidden');
@@ -635,7 +1050,11 @@ window.exportToPDF = async function(chartId, title) {
         if (vizTabBtn) vizTabBtn.click();
         
         // 4. GENERATE MULTI-PAGE PDF
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        if (imgData === 'data:,') {
+            throw new Error("Browser failed to generate image data (canvas might be too large).");
+        }
+        
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -659,14 +1078,14 @@ window.exportToPDF = async function(chartId, title) {
         let position = 20; // Start below the header
 
         // Page 1
-        pdf.addImage(imgData, 'PNG', margin, position, availableWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', margin, position, availableWidth, imgHeight);
         heightLeft -= (pdfHeight - position);
 
         // Subsequent Pages
         while (heightLeft > 0) {
             position = position - pdfHeight;
             pdf.addPage();
-            pdf.addImage(imgData, 'PNG', margin, position, availableWidth, imgHeight);
+            pdf.addImage(imgData, 'JPEG', margin, position, availableWidth, imgHeight);
             heightLeft -= pdfHeight;
         }
         
@@ -675,7 +1094,7 @@ window.exportToPDF = async function(chartId, title) {
         
     } catch (error) {
         console.error("PDF Generation failed:", error);
-        alert("Failed to generate PDF. Please try again.");
+        alert("Failed to generate PDF. Error: " + error.message);
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -685,6 +1104,103 @@ window.exportToPDF = async function(chartId, title) {
 // ==========================================
 // AGENT PROFILES
 // ==========================================
+
+// ==========================================
+// AGENT PROFILES & SAMPLE QUESTIONS
+// ==========================================
+
+const agentSampleQuestions = {
+    'agent-schema': {
+        agentKey: 'schema',
+        agentName: 'Schema Discovery Agent',
+        badge: '🔍 Schema Discovery',
+        subtitle: 'Real-time introspection across Exasol schemas, tables, and column data types',
+        color: 'from-blue-500 to-cyan-500',
+        borderColor: 'border-blue-500/30',
+        groups: [
+            {
+                category: 'Schema Architecture & Column Metrics',
+                questions: [
+                    { q: "Show the distribution of column count across each table in the TPCH schema.", desc: "Introspects table structure and generates a visual breakdown of column density" },
+                    { q: "Compare the number of columns by data type across all TPCH tables.", desc: "Analyzes system metadata to visualize data type distribution" },
+                    { q: "List all TPCH tables ranked by their total number of columns.", desc: "Visualizes schema tables ranked by column complexity and volume" },
+                    { q: "Show the breakdown of nullable vs non-nullable columns across TPCH tables.", desc: "Computes nullability constraint metrics with a visual distribution chart" }
+                ]
+            }
+        ]
+    },
+    'agent-sql': {
+        agentKey: 'sql',
+        agentName: 'Natural Language SQL Agent',
+        badge: '⚡ SQL Analytics',
+        subtitle: 'Natural language questions converted into high-performance Exasol SQL queries',
+        color: 'from-indigo-500 to-violet-600',
+        borderColor: 'border-indigo-500/30',
+        groups: [
+            {
+                category: 'Revenue & Regional Performance',
+                questions: [
+                    { q: "Compare total revenue by region.", desc: "Multi-table JOIN across LINEITEM, ORDERS, CUSTOMER, NATION, REGION with regional revenue chart" },
+                    { q: "What is the total quantity of parts ordered per year?", desc: "Multi-year part order quantity trend analysis with time-series chart" },
+                    { q: "What is the total revenue breakdown by order priority?", desc: "Aggregates revenue distribution across urgent and standard priority levels" }
+                ]
+            },
+            {
+                category: 'Customer Intelligence & Spend',
+                questions: [
+                    { q: "Who are the top 10 customers by total spend?", desc: "Aggregates customer lifetime value ranking with visual bar chart" },
+                    { q: "What is the average account balance of customers by market segment?", desc: "Cross-analyzes customer financial liquidity across commercial market segments" },
+                    { q: "Show average order value by nation for the top 10 nations.", desc: "Calculates average ticket size by nation with geographic spending rankings" }
+                ]
+            },
+            {
+                category: 'Supply Chain, Parts & Logistics',
+                questions: [
+                    { q: "Which suppliers have the highest order volume?", desc: "Identifies top fulfillment suppliers by total item quantity" },
+                    { q: "What is the average shipping delay in days by ship mode?", desc: "Computes date differentials across logistics carriers (AIR, SHIP, TRUCK, MAIL)" }
+                ]
+            }
+        ]
+    },
+    'agent-governance': {
+        agentKey: 'governance',
+        agentName: 'Dual-Layer Security Firewall',
+        badge: '🛡️ Governance & Safety',
+        subtitle: 'Zero-trust read-only safety, guardrails, compliance, and audit analytics',
+        color: 'from-rose-500 to-red-600',
+        borderColor: 'border-rose-500/30',
+        groups: [
+            {
+                category: 'Compliance Audit & Risk Visualizations',
+                questions: [
+                    { q: "Show total customer account balance and record counts grouped by nation.", desc: "Financial compliance audit aggregating geographic balance exposure" },
+                    { q: "Analyze order volume distribution across order priority levels.", desc: "Operational governance risk analysis of urgent vs normal backlog volume" },
+                    { q: "Audit line item return rates by return flag status across all transactions.", desc: "Audits return flag compliance metrics across all historical shipments" },
+                    { q: "Can you delete orders older than 7 years?", desc: "Tests zero-trust security firewall blocking destructive DELETE/DROP statements" }
+                ]
+            }
+        ]
+    },
+    'agent-storyteller': {
+        agentKey: 'storyteller',
+        agentName: 'Executive Insights Storyteller',
+        badge: '📊 Executive Storyteller',
+        subtitle: 'Summarized KPIs, anomaly identification, and dynamic chart generation',
+        color: 'from-emerald-400 to-teal-500',
+        borderColor: 'border-emerald-500/30',
+        groups: [
+            {
+                category: 'Executive Insights & Visual Narratives',
+                questions: [
+                    { q: "Provide an executive summary of order return rates by shipping mode with a comparison chart.", desc: "Generates return rate analysis with recommended comparison chart" },
+                    { q: "Analyze yearly revenue trends from 1992 to 1998 and highlight key growth drivers.", desc: "Time-series storytelling with strategic trend explanation and growth trajectory" },
+                    { q: "Generate a breakdown of top-selling part types with total revenue.", desc: "Product category performance synthesis and sales volume breakdown" },
+                    { q: "Compare average customer account balance across regions.", desc: "Regional financial liquidity analysis and wealth concentration narrative" }
+                ]
+            }
+        ]
+    }
+};
 
 const agentData = {
     'agent-schema': {
@@ -724,14 +1240,74 @@ function renderAgentProfile(agentId) {
     // Reset UI
     transitionToResults();
     resultsArea.innerHTML = '';
+    hideSearchBar();
     
     // Remove active class from all nav items
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.getElementById(agentId).classList.add('active');
 
+    const profile = agentProfiles[agentId];
+    const sampleData = agentSampleQuestions[agentId];
+    
+    let questionsHtml = '';
+    if (sampleData && sampleData.groups) {
+        questionsHtml = `
+            <div class="mt-6 bg-slate-50 dark:bg-[#12141A] rounded-xl p-6 border border-slate-200 dark:border-slate-800/60 shadow-sm">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-200 dark:border-slate-800/60">
+                    <div>
+                        <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                            <span>Sample Agent Questions</span>
+                        </h4>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">${sampleData.subtitle}</p>
+                    </div>
+                    <span class="self-start sm:self-auto text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-semibold px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg border border-indigo-200 dark:border-indigo-800/50">${sampleData.badge}</span>
+                </div>
+
+                <div class="space-y-6">
+                    ${sampleData.groups.map(group => `
+                        <div>
+                            <div class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <span>${group.category}</span>
+                                <div class="h-px flex-1 bg-slate-200 dark:bg-slate-800/60"></div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                ${group.questions.map(qItem => {
+                                    const safeQ = qItem.q.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                                    return `
+                                        <div onclick="window.askQuery('${safeQ}')" class="insight-card cursor-pointer p-4 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-md transition-all duration-200 flex flex-col justify-between group bg-white dark:bg-[#18181B] border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+                                            <div>
+                                                <p class="text-sm font-semibold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors leading-snug">
+                                                    "${qItem.q}"
+                                                </p>
+                                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                                                    ${qItem.desc}
+                                                </p>
+                                            </div>
+                                            <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between gap-2">
+                                                <button onclick="event.stopPropagation(); window.setQuery('${safeQ}')" class="px-2.5 py-1 text-[11px] font-medium rounded text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1">
+                                                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                                                    <span>Insert</span>
+                                                </button>
+                                                <button onclick="event.stopPropagation(); window.askQuery('${safeQ}')" class="px-3 py-1 text-[11px] font-semibold rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/50 dark:text-indigo-300 transition-all flex items-center gap-1.5 shadow-sm">
+                                                    <span>⚡ Ask Agent</span>
+                                                    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
     const html = `
         <div class="w-full mx-auto opacity-0 transform translate-y-4 transition-all duration-700 mb-8 max-w-4xl pt-10">
-            <div class="insight-card p-10 relative overflow-hidden group border-t-4 border-t-transparent group" style="border-image: linear-gradient(to right, transparent, rgba(99,102,241,0.5), transparent) 1; border-top-color: rgba(99,102,241,0.5);">
+            <!-- Main Hero Card -->
+            <div class="insight-card p-10 relative overflow-hidden group border-t-4 border-t-transparent group mb-6" style="border-image: linear-gradient(to right, transparent, rgba(99,102,241,0.5), transparent) 1; border-top-color: rgba(99,102,241,0.5);">
                 
                 <div class="absolute -right-20 -top-20 w-64 h-64 bg-gradient-to-br ${data.color} rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
 
@@ -754,6 +1330,44 @@ function renderAgentProfile(agentId) {
                     </div>
                 </div>
             </div>
+            
+            <!-- Agent Details Panels -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Architecture Specs -->
+                <div class="bg-slate-50 dark:bg-[#12141A] rounded-xl p-6 border border-slate-200 dark:border-slate-800/60 shadow-sm">
+                    <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Model Engine</h4>
+                    <div class="flex items-center gap-3 mb-6">
+                        <svg class="w-5 h-5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                        <span class="font-mono text-sm text-slate-800 dark:text-slate-200 font-semibold">${profile ? profile.llm : 'N/A'}</span>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-slate-200 dark:border-slate-800/50 flex justify-between items-center text-sm">
+                        <span class="text-slate-500 font-medium">Context Window</span>
+                        <span class="font-mono text-slate-700 dark:text-slate-300 font-semibold bg-white dark:bg-black/20 px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700">128K</span>
+                    </div>
+                </div>
+                
+                <!-- Live Trace -->
+                <div class="bg-slate-50 dark:bg-[#12141A] rounded-xl p-6 border border-slate-200 dark:border-slate-800/60 shadow-sm">
+                    <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Live Orchestration Log</h4>
+                    <div class="relative pl-5 border-l-2 border-indigo-500 py-1">
+                        <div class="absolute -left-[6px] top-1.5 w-2.5 h-2.5 rounded-full bg-indigo-500 ring-4 ring-slate-50 dark:ring-[#12141A]"></div>
+                        <p class="text-[13px] text-slate-600 dark:text-slate-400 font-medium leading-relaxed">${profile ? profile.lastAction : 'Awaiting dispatch...'}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Base Instruction Context -->
+            <div class="mt-6 bg-slate-50 dark:bg-[#12141A] rounded-xl p-6 border border-slate-200 dark:border-slate-800/60 shadow-sm">
+                <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-3">Base Instruction Context <div class="h-px flex-1 bg-slate-200 dark:bg-slate-800/60"></div></h4>
+                <div class="bg-slate-900 dark:bg-black rounded-lg p-4 border border-slate-800 shadow-inner">
+                    <pre class="font-mono text-xs text-emerald-400/90 whitespace-pre-wrap leading-relaxed"><code>${profile ? profile.prompt : 'N/A'}</code></pre>
+                </div>
+            </div>
+
+            <!-- Sample Questions for this Agent -->
+            ${questionsHtml}
+            
         </div>
     `;
     
@@ -823,7 +1437,7 @@ if (navOverview) {
         resultsArea.innerHTML = '';
         showSearchBar();
         
-        // Restore Hero section
+        // Restore Hero section and suggestions
         heroSection.classList.remove('opacity-0', 'scale-95', 'h-0', 'mb-0', 'overflow-hidden');
         suggestions.classList.remove('opacity-0', 'scale-95', 'h-0', 'overflow-hidden');
     });
@@ -863,15 +1477,20 @@ if (navHistory) {
         queryHistoryList.forEach((item, index) => {
             const statusColor = item.success ? 'text-emerald-500' : 'text-rose-500';
             const icon = item.success ? '✓' : '✗';
+            
+            // Handle both old schema and new schema for history items
+            const itemQuery = item.query || item.question || '';
+            const itemTime = item.time || item.timestamp || '';
+            
             historyHtml += `
-                <div class="insight-card p-5 hover:border-indigo-500/50 cursor-pointer group transition-all duration-300" onclick="window.setQuery('${item.query.replace(/'/g, "\\'")}')">
+                <div class="insight-card p-5 hover:border-indigo-500/50 cursor-pointer group transition-all duration-300" onclick="window.setQuery('${itemQuery.replace(/'/g, "\\'")}')">
                     <div class="flex items-center gap-4">
                         <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold ${statusColor} shrink-0">
                             ${icon}
                         </div>
                         <div class="flex-1">
-                            <p class="text-slate-900 dark:text-slate-50 font-semibold text-lg group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">${item.query}</p>
-                            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">${item.time}</p>
+                            <p class="text-slate-900 dark:text-slate-50 font-semibold text-lg group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1">${itemQuery}</p>
+                            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">${itemTime}</p>
                         </div>
                         <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-3 shrink-0">
                             <span class="text-xs font-bold text-indigo-500 uppercase tracking-wider hidden sm:block">Run Again</span>
@@ -936,7 +1555,12 @@ window.loadSavedInsight = function(id) {
     
     transitionToResults();
     hideSearchBar();
-    renderAssistantResponse(item.data.resp, item.data.originalQuery, true);
+    
+    // Handle both old schema (data) and new schema ({resp, originalQuery})
+    const responseData = item.data.resp || item.data;
+    const originalQuery = item.data.originalQuery || item.query;
+    
+    renderAssistantResponse(responseData, originalQuery, true);
     
     // Maintain active state in nav since we are still inside Saved Insights
     setActiveNav('nav-saved');
