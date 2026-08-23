@@ -92,4 +92,5 @@ dummy.wav
 .Trashes
 ehthumbs.db
 Thumbs.db
-desktop.ini
+desktop.ini__pycache__/ 
+*.pyc 
