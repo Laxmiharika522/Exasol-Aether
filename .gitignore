@@ -63,6 +63,7 @@ coverage.xml
 scratch/
 temp/
 tmp/
+Exasol-Aether/
 *.log
 *.wav
 *.mp3
